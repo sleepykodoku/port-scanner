@@ -52,6 +52,7 @@ func main() {
 	endPort := flag.Int("end", 1024, "Ending port")
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 	timeout := flag.Int("timeout", 5, "Connection timeout in seconds")
+	portsList := flag.String("ports", "", "Comma-separated list of ports")
 	jsonOutput := flag.Bool("json", false, "Output results in JSON format")
 	flag.Parse()
 
@@ -63,10 +64,31 @@ func main() {
 		targetsToScan = []string{*target}
 	}
 
-	// Validate port range
-	if *startPort < 1 || *endPort > 65535 || *startPort > *endPort {
-		fmt.Println("Invalid port range. Use 1-65535 with start <= end")
-		return
+	// Prepare ports
+	var portsToScan []int
+	if *portsList != "" {
+		portStrs := strings.Split(*portsList, ",")
+		for _, p := range portStrs {
+			port, err := strconv.Atoi(p)
+			if err != nil {
+				fmt.Printf("Invalid port: %s\n", p)
+				continue
+			}
+			if port < 1 || port > 65535 {
+				fmt.Printf("Port %d out of range (1-65535)\n", port)
+				continue
+			}
+			portsToScan = append(portsToScan, port)
+		}
+	} else {
+		// Validate port range
+		if *startPort < 1 || *endPort > 65535 || *startPort > *endPort {
+			fmt.Println("Invalid port range. Use 1-65535 with start <= end")
+			return
+		}
+		for port := *startPort; port <= *endPort; port++ {
+			portsToScan = append(portsToScan, port)
+		}
 	}
 
 	startTime := time.Now()
@@ -74,7 +96,7 @@ func main() {
 
 	for _, target := range targetsToScan {
 		// Setup for each target
-		totalPorts := *endPort - *startPort + 1
+		totalPorts := len(portsToScan)
 		tasks := make(chan int, *workers)
 		results := make(chan ScanResult, totalPorts)
 		var wg sync.WaitGroup
@@ -104,7 +126,7 @@ func main() {
 
 		// Generate tasks
 		go func() {
-			for port := *startPort; port <= *endPort; port++ {
+			for _, port := range portsToScan {
 				tasks <- port
 			}
 			close(tasks)
