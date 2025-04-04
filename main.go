@@ -1,6 +1,3 @@
-// Filename: main.go
-// Purpose: This program demonstrates how to create a TCP network connection using Go
-
 package main
 
 import (
@@ -21,6 +18,15 @@ type ScanResult struct {
 	Banner string `json:"banner,omitempty"`
 }
 
+type ScanSummary struct {
+	Targets        []string `json:"targets"`
+	OpenPorts      int      `json:"open_ports"`
+	TotalPorts     int      `json:"total_ports"`
+	TimeTaken      string   `json:"time_taken"`
+	Workers        int      `json:"workers"`
+	TimeoutSeconds int      `json:"timeout_seconds"`
+}
+
 func worker(wg *sync.WaitGroup, tasks chan int, results chan ScanResult, target string, timeout time.Duration, mutex *sync.Mutex, progress *int) {
 	defer wg.Done()
 	for port := range tasks {
@@ -28,7 +34,6 @@ func worker(wg *sync.WaitGroup, tasks chan int, results chan ScanResult, target 
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(target, strconv.Itoa(port)), timeout)
 		if err == nil {
 			result.Open = true
-			// Banner grabbing
 			conn.SetReadDeadline(time.Now().Add(timeout))
 			banner := make([]byte, 1024)
 			n, _ := conn.Read(banner)
@@ -45,7 +50,6 @@ func worker(wg *sync.WaitGroup, tasks chan int, results chan ScanResult, target 
 }
 
 func main() {
-	// CLI flags
 	target := flag.String("target", "scanme.nmap.org", "Target hostname or IP")
 	targets := flag.String("targets", "", "Comma-separated list of targets")
 	startPort := flag.Int("start", 1, "Starting port")
@@ -56,7 +60,6 @@ func main() {
 	jsonOutput := flag.Bool("json", false, "Output results in JSON format")
 	flag.Parse()
 
-	// Prepare targets
 	var targetsToScan []string
 	if *targets != "" {
 		targetsToScan = strings.Split(*targets, ",")
@@ -64,7 +67,6 @@ func main() {
 		targetsToScan = []string{*target}
 	}
 
-	// Prepare ports
 	var portsToScan []int
 	if *portsList != "" {
 		portStrs := strings.Split(*portsList, ",")
@@ -81,7 +83,6 @@ func main() {
 			portsToScan = append(portsToScan, port)
 		}
 	} else {
-		// Validate port range
 		if *startPort < 1 || *endPort > 65535 || *startPort > *endPort {
 			fmt.Println("Invalid port range. Use 1-65535 with start <= end")
 			return
@@ -93,38 +94,21 @@ func main() {
 
 	startTime := time.Now()
 	var allResults []ScanResult
+	openPorts := 0
 
 	for _, target := range targetsToScan {
-		// Setup for each target
 		totalPorts := len(portsToScan)
 		tasks := make(chan int, *workers)
 		results := make(chan ScanResult, totalPorts)
 		var wg sync.WaitGroup
 		var mutex sync.Mutex
 		progress := 0
-		openPorts := 0
 
-		// Start workers
 		for i := 0; i < *workers; i++ {
 			wg.Add(1)
 			go worker(&wg, tasks, results, target, time.Duration(*timeout)*time.Second, &mutex, &progress)
 		}
 
-		// Progress monitor
-		go func() {
-			for {
-				mutex.Lock()
-				current := progress
-				mutex.Unlock()
-				fmt.Printf("\rScanning %s: %d/%d (%.1f%%)", target, current, totalPorts, float64(current)/float64(totalPorts)*100)
-				if current >= totalPorts {
-					return
-				}
-				time.Sleep(200 * time.Millisecond)
-			}
-		}()
-
-		// Generate tasks
 		go func() {
 			for _, port := range portsToScan {
 				tasks <- port
@@ -132,7 +116,6 @@ func main() {
 			close(tasks)
 		}()
 
-		// Process results
 		var scanResults []ScanResult
 		for i := 0; i < totalPorts; i++ {
 			result := <-results
@@ -144,12 +127,28 @@ func main() {
 		wg.Wait()
 
 		allResults = append(allResults, scanResults...)
-		fmt.Printf("\n%s: %d open ports found\n", target, openPorts)
+		fmt.Printf("\n%s: %d open ports found\n", target, len(scanResults))
 	}
 
-	// Output results
 	if *jsonOutput {
-		jsonData, err := json.MarshalIndent(allResults, "", "  ")
+		summary := ScanSummary{
+			Targets:        targetsToScan,
+			OpenPorts:      openPorts,
+			TotalPorts:     len(portsToScan),
+			TimeTaken:      fmt.Sprintf("%.2f seconds", time.Since(startTime).Seconds()),
+			Workers:        *workers,
+			TimeoutSeconds: *timeout,
+		}
+
+		output := struct {
+			Results []ScanResult `json:"results"`
+			Summary ScanSummary  `json:"summary"`
+		}{
+			Results: allResults,
+			Summary: summary,
+		}
+
+		jsonData, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
 			fmt.Println("Error generating JSON output:", err)
 		} else {
@@ -164,9 +163,13 @@ func main() {
 			}
 			fmt.Println(output)
 		}
-	}
 
-	// Summary
-	fmt.Printf("\nScan completed in %v\n", time.Since(startTime))
-	fmt.Printf("Total open ports found: %d\n", len(allResults))
+		fmt.Println("\nScan Summary:")
+		fmt.Printf("Targets: %v\n", targetsToScan)
+		fmt.Printf("Open ports: %d\n", openPorts)
+		fmt.Printf("Total ports scanned: %d\n", len(portsToScan))
+		fmt.Printf("Time taken: %.2f seconds\n", time.Since(startTime).Seconds())
+		fmt.Printf("Workers: %d\n", *workers)
+		fmt.Printf("Timeout: %d seconds\n", *timeout)
+	}
 }
