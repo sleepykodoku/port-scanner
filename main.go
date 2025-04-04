@@ -8,20 +8,34 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
-func worker(wg *sync.WaitGroup, tasks chan int, results chan int, target string, timeout time.Duration, mutex *sync.Mutex, progress *int) {
+type ScanResult struct {
+	Port   int
+	Open   bool
+	Banner string
+}
+
+func worker(wg *sync.WaitGroup, tasks chan int, results chan ScanResult, target string, timeout time.Duration, mutex *sync.Mutex, progress *int) {
 	defer wg.Done()
 	for port := range tasks {
+		result := ScanResult{Port: port}
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(target, strconv.Itoa(port)), timeout)
 		if err == nil {
+			result.Open = true
+			// Banner grabbing
+			conn.SetReadDeadline(time.Now().Add(timeout))
+			banner := make([]byte, 1024)
+			n, _ := conn.Read(banner)
+			if n > 0 {
+				result.Banner = strings.TrimSpace(string(banner[:n]))
+			}
 			conn.Close()
-			results <- port
-		} else {
-			results <- 0
 		}
+		results <- result
 		mutex.Lock()
 		*progress++
 		mutex.Unlock()
@@ -46,7 +60,7 @@ func main() {
 	// Setup
 	totalPorts := *endPort - *startPort + 1
 	tasks := make(chan int, *workers)
-	results := make(chan int, totalPorts)
+	results := make(chan ScanResult, totalPorts)
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
 	progress := 0
@@ -82,17 +96,29 @@ func main() {
 	}()
 
 	// Process results
+	var scanResults []ScanResult
 	openPorts := 0
 	for i := 0; i < totalPorts; i++ {
-		if port := <-results; port > 0 {
-			fmt.Printf("\nPort %d is open", port)
+		result := <-results
+		if result.Open {
 			openPorts++
+			scanResults = append(scanResults, result)
 		}
 	}
 	wg.Wait()
 
+	// Output results
+	fmt.Println("\n\nOpen ports:")
+	for _, res := range scanResults {
+		output := fmt.Sprintf("%d: Open", res.Port)
+		if res.Banner != "" {
+			output += fmt.Sprintf(" (Banner: %s)", res.Banner)
+		}
+		fmt.Println(output)
+	}
+
 	// Summary
-	fmt.Printf("\n\nScan completed in %v\n", time.Since(startTime))
+	fmt.Printf("\nScan completed in %v\n", time.Since(startTime))
 	fmt.Printf("Open ports found: %d\n", openPorts)
 	fmt.Printf("Total ports scanned: %d\n", totalPorts)
 }
