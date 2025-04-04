@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func worker(wg *sync.WaitGroup, tasks chan int, results chan int, target string, timeout time.Duration) {
+func worker(wg *sync.WaitGroup, tasks chan int, results chan int, target string, timeout time.Duration, mutex *sync.Mutex, progress *int) {
 	defer wg.Done()
 	for port := range tasks {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(target, strconv.Itoa(port)), timeout)
@@ -22,6 +22,9 @@ func worker(wg *sync.WaitGroup, tasks chan int, results chan int, target string,
 		} else {
 			results <- 0
 		}
+		mutex.Lock()
+		*progress++
+		mutex.Unlock()
 	}
 }
 
@@ -45,12 +48,30 @@ func main() {
 	tasks := make(chan int, *workers)
 	results := make(chan int, totalPorts)
 	var wg sync.WaitGroup
+	var mutex sync.Mutex
+	progress := 0
 
 	// Start workers
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
-		go worker(&wg, tasks, results, *target, time.Duration(*timeout)*time.Second)
+		go worker(&wg, tasks, results, *target, time.Duration(*timeout)*time.Second, &mutex, &progress)
 	}
+
+	// Progress monitor
+	go func() {
+		for {
+			mutex.Lock()
+			current := progress
+			mutex.Unlock()
+			fmt.Printf("\rProgress: %d/%d (%.1f%%)", current, totalPorts, float64(current)/float64(totalPorts)*100)
+			if current >= totalPorts {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}()
+
+	startTime := time.Now()
 
 	// Generate tasks
 	go func() {
@@ -64,13 +85,14 @@ func main() {
 	openPorts := 0
 	for i := 0; i < totalPorts; i++ {
 		if port := <-results; port > 0 {
-			fmt.Printf("Port %d is open\n", port)
+			fmt.Printf("\nPort %d is open", port)
 			openPorts++
 		}
 	}
 	wg.Wait()
 
 	// Summary
-	fmt.Printf("\nScan completed: %d open ports found\n", openPorts)
-	fmt.Printf("Scanned %d ports in total\n", totalPorts)
+	fmt.Printf("\n\nScan completed in %v\n", time.Since(startTime))
+	fmt.Printf("Open ports found: %d\n", openPorts)
+	fmt.Printf("Total ports scanned: %d\n", totalPorts)
 }
