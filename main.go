@@ -4,6 +4,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
@@ -14,10 +15,10 @@ import (
 )
 
 type ScanResult struct {
-	Target string
-	Port   int
-	Open   bool
-	Banner string
+	Target string `json:"target"`
+	Port   int    `json:"port"`
+	Open   bool   `json:"open"`
+	Banner string `json:"banner,omitempty"`
 }
 
 func worker(wg *sync.WaitGroup, tasks chan int, results chan ScanResult, target string, timeout time.Duration, mutex *sync.Mutex, progress *int) {
@@ -51,6 +52,7 @@ func main() {
 	endPort := flag.Int("end", 1024, "Ending port")
 	workers := flag.Int("workers", 100, "Number of concurrent workers")
 	timeout := flag.Int("timeout", 5, "Connection timeout in seconds")
+	jsonOutput := flag.Bool("json", false, "Output results in JSON format")
 	flag.Parse()
 
 	// Prepare targets
@@ -124,13 +126,22 @@ func main() {
 	}
 
 	// Output results
-	fmt.Println("\nOpen ports:")
-	for _, res := range allResults {
-		output := fmt.Sprintf("%s:%d - Open", res.Target, res.Port)
-		if res.Banner != "" {
-			output += fmt.Sprintf(" (Banner: %s)", res.Banner)
+	if *jsonOutput {
+		jsonData, err := json.MarshalIndent(allResults, "", "  ")
+		if err != nil {
+			fmt.Println("Error generating JSON output:", err)
+		} else {
+			fmt.Println(string(jsonData))
 		}
-		fmt.Println(output)
+	} else {
+		fmt.Println("\nOpen ports:")
+		for _, res := range allResults {
+			output := fmt.Sprintf("%s:%d - Open", res.Target, res.Port)
+			if res.Banner != "" {
+				output += fmt.Sprintf(" (Banner: %s)", res.Banner)
+			}
+			fmt.Println(output)
+		}
 	}
 
 	// Summary
