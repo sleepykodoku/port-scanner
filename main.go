@@ -127,7 +127,6 @@ func main() {
 		wg.Wait()
 
 		allResults = append(allResults, scanResults...)
-		fmt.Printf("\n%s: %d open ports found\n", target, len(scanResults))
 	}
 
 	if *jsonOutput {
@@ -155,15 +154,6 @@ func main() {
 			fmt.Println(string(jsonData))
 		}
 	} else {
-		fmt.Println("\nOpen ports:")
-		for _, res := range allResults {
-			output := fmt.Sprintf("%s:%d - Open", res.Target, res.Port)
-			if res.Banner != "" {
-				output += fmt.Sprintf(" (Banner: %s)", res.Banner)
-			}
-			fmt.Println(output)
-		}
-
 		fmt.Println("\nScan Summary:")
 		fmt.Printf("Targets: %v\n", targetsToScan)
 		fmt.Printf("Open ports: %d\n", openPorts)
