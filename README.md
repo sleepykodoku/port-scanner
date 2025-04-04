@@ -14,35 +14,47 @@ This program demonstrates how to create a TCP network connection using Go.
 
 🏃 Running
 Basic scan:
-./portscanner -target scanme.nmap.org
+go run main.go -target scanme.nmap.org
 Advanced scan:
-./portscanner -targets "scanme.nmap.org,example.com" -ports "22,80,443,8080" -workers 200 -timeout 3 -json
+go run main.go -targets "scanme.nmap.org,example.com" -ports "22,80,443,8080" -workers 200 -timeout 3 -json
 
 🎨 Sample Output
 Regular Output
 
-Scanning scanme.nmap.org: 1024/1024 (100.0%)
-scanme.nmap.org: 2 open ports found
+Scan Summary:
+Targets: [scanme.nmap.org]
+Open ports: 2
+Total ports scanned: 1024
+Time taken: 5.07 seconds
+Workers: 100
+Timeout: 5 seconds
 
-Open ports:
-scanme.nmap.org:22 - Open (Banner: SSH-2.0-OpenSSH_7.6p1 Ubuntu-4ubuntu0.3)
-scanme.nmap.org:80 - Open (Banner: HTTP/1.1 400 Bad Request...)
-
-Scan completed in 4.21s
-Total open ports found: 2
 JSON Output
 
 [
-  {
-    "target": "scanme.nmap.org",
-    "port": 22,
-    "open": true,
-    "banner": "SSH-2.0-OpenSSH_7.6p1 Ubuntu-4ubuntu0.3"
-  },
-  {
-    "target": "scanme.nmap.org",
-    "port": 80,
-    "open": true,
-    "banner": "HTTP/1.1 400 Bad Request..."
+ {
+  "results": [
+    {
+      "target": "scanme.nmap.org",
+      "port": 22,
+      "open": true,
+      "banner": "SSH-2.0-OpenSSH_6.6.1p1 Ubuntu-2ubuntu2.13"
+    },
+    {
+      "target": "scanme.nmap.org",
+      "port": 80,
+      "open": true
+    }
+  ],
+  "summary": {
+    "targets": [
+      "scanme.nmap.org"
+    ],
+    "open_ports": 2,
+    "total_ports": 1024,
+    "time_taken": "5.07 seconds",
+    "workers": 100,
+    "timeout_seconds": 5
   }
+}
 ]
